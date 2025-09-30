@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$/BusinessService" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/FacebookIntegration" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ShareLibrary" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/auth-service" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/fe-84pos" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/gateway" vcs="Git" />
+  </component>
+</project>

@@ -1,0 +1,193 @@
+---
+description: Bộ quy tắc coding standards, naming conventions và project rules cho hệ thống 84POS (full-stack với Backend microservices và Frontend React).
+attachments:
+  - path: "FacebookIntegration/**"
+  - path: "gateway/**"
+  - path: "ShareLibrary/**"
+  - path: "fe-84pos/**"
+---
+# Project Rule: 84POS System
+
+## Tổng quan hệ thống
+- **Kiến trúc**: Full-stack với Backend microservices + Frontend React
+- **Backend**: 3 microservices chính
+  - **FacebookIntegration**: Xử lý Facebook API, Webhook, WebSocket (Port 8400)
+  - **Gateway**: API Gateway với Spring Cloud Gateway (Port 1106) 
+  - **ShareLibrary**: Thư viện chung cho API Response, Tracing, Exception Handling
+- **Frontend**: React TypeScript SPA (fe-84pos)
+- **BusinessService**: Đã merge vào FacebookIntegration để giảm instance
+
+## Rules
+
+### Coding Style & Naming
+- **Package naming**: 
+  - FacebookIntegration → `com.example.facebookinteration` (có typo nhưng giữ nguyên)
+  - Gateway → `anhlv.gateway`
+  - ShareLibrary → `com.company.common`
+- **Class naming**: `*Controller.java`, `*Service.java`, `*ServiceImpl.java`, `*Repository.java`, `*Entity.java`, `*Dto.java`, `*Request.java`, `*Response.java`, `*Exception.java`, `*Handler.java`, `*Config.java`
+- **Method naming**: camelCase, boolean prefix `is/has/can`
+- **Variable naming**: camelCase, constants → `UPPER_SNAKE_CASE`
+- **Entity naming**: Tránh reserved words (User → app_user, Address → user_address)
+
+### Java & Spring Boot
+- **Java**: 17 (bắt buộc)
+- **Spring Boot versions**:
+  - FacebookIntegration → 3.3.2
+  - Gateway → 3.3.5  
+  - ShareLibrary → 3.2.5
+- **Dependency management**: Maven (FacebookIntegration, ShareLibrary), Gradle (Gateway)
+- **Web Stack**: Servlet (FacebookIntegration), WebFlux (Gateway)
+
+### Lombok Usage
+- **Annotations**: `@Data`, `@Builder`, `@NoArgsConstructor`, `@AllArgsConstructor`, `@Getter`, `@Setter`
+- **Logging**: `@Slf4j` (FacebookIntegration), Manual Logger (Gateway)
+- **Constructor injection**: **BẮT BUỘC** cho tất cả services
+- **Avoid**: `@RequiredArgsConstructor` khi có conflict bean names
+
+### Error Handling
+- **CustomException**: Sử dụng `com.company.common.apiresponse.CustomException` từ ShareLibrary
+- **GlobalExceptionHandler**: ShareLibrary cho FacebookIntegration, Gateway có handler riêng do WebFlux
+- **Error messages**: Hardcode trong service, không tạo ErrorMessages class riêng
+
+### API Response
+- **Standard**: Sử dụng `ApiResponse` và `ApiResponseBuilder` từ ShareLibrary
+- **Format**: `{httpStatus, code, codeFull, message, data, traceId}`
+- **Trace injection**: Tự động thêm traceId vào response body
+
+### Database & JPA
+- **Entities**: `@Entity`, `@Table(name="table_name")` (tránh reserved words)
+- **Columns**: `@Column(columnDefinition="TEXT")` cho text dài, `TIMESTAMP(6)` cho datetime
+- **Repositories**: JPA pattern với custom methods
+- **Transactions**: `@Transactional` cho service layer
+- **Database**: H2 (dev), MySQL (production)
+
+### Logging Framework
+- **FacebookIntegration**: Log4j2 với pattern `[%X{serviceName}] [%X{traceId}] [%X{spanId}]`
+- **Gateway**: Log4j2 (migrated từ SLF4J)
+- **Pattern**: Structured logging với trace context injection
+- **Levels**: DEBUG (application), WARN (OpenTelemetry agent), INFO (exporter)
+
+### Security Implementation
+- **JWT**: `io.jsonwebtoken:jjwt:0.9.1`
+- **Rate limiting**: Bucket4j (5req/s/IP)
+- **Security config**: Permit all cho FacebookIntegration, JWT validation cho Gateway
+- **CORS**: Enabled cho WebSocket và API
+
+### Testing Standards
+- **Unit tests**: Mockito, JUnit 5
+- **Integration tests**: SpringBootTest, H2 database
+- **Naming**: `method_shouldExpectedBehavior_whenCondition`
+- **Coverage**: Controller, Service, Repository layers
+
+### Build & Wrapper Commands
+- **BẮT BUỘC** sử dụng wrapper cho build commands
+- **Maven projects**: `./mvnw` (FacebookIntegration, ShareLibrary)
+- **Gradle projects**: `./gradlew` (Gateway)
+- **NPM projects**: `npm` (fe-84pos)
+- **Không sử dụng** `mvn`, `gradle` trực tiếp
+
+#### Maven Commands (FacebookIntegration)
+- **Build only**: `./mvnw clean install`
+- **Run without OTel**: `./mvnw spring-boot:run`
+- **Run with OpenTelemetry**: 
+  ```bash
+  ./mvnw clean generate-resources spring-boot:run -Dspring-boot.run.jvmArguments="-javaagent:C:\tools\opentelemetry-javaagent.jar -Dotel.javaagent.configuration-file=otel-agent.properties"
+  ```
+
+#### Gradle Commands (Gateway)
+- **Build only**: `./gradlew build`
+- **Run with OTel**: `./gradlew runWithOtel`
+
+#### NPM Commands (Frontend)
+- **Install dependencies**: `npm install`
+- **Start development**: `npm start` (Port 3000)
+- **Build production**: `npm run build`
+- **Run tests**: `npm test`
+
+### Git & Version Control
+- **Commit convention**: `feat(scope): description`, `fix(scope): description`
+- **Branch naming**: `feature/xxx`, `bugfix/xxx`, `release/x.y.z`
+- **Merge strategy**: Squash merge cho feature branches
+
+### Facebook Integration (Quan trọng)
+- **Library**: RestFB 2024.10.0 (bắt buộc)
+- **TUYỆT ĐỐI KHÔNG** tự viết HTTP client cho FB API
+- **Exception mapping**: Xử lý FB error codes (ví dụ `( #10 ) subcode 2018278`)
+- **Webhook**: Xử lý realtime events từ Facebook
+- **WebSocket**: Push events đến client
+
+### OpenTelemetry Trace Injection (Quan trọng)
+- **Mục tiêu**: Distributed tracing xuyên suốt microservices
+- **Agent version**: 1.32.0 (stable)
+- **Configuration**: `otel-agent.properties` với log4j-context-data enabled
+- **Manual injection**: `OpenTelemetryInterceptor` cho FacebookIntegration, `OpenTelemetryFilter` cho Gateway
+- **Log pattern**: `[%X{serviceName}] [%X{traceId}] [%X{spanId}]` trong log4j2-spring.xml
+- **Propagation**: W3C Trace Context + B3 headers
+- **Response modification**: Gateway thêm traceId vào response body
+
+### Docker & Deployment
+- **Base image**: `eclipse-temurin:17-jdk-alpine` (build), `eclipse-temurin:17-jre-alpine` (runtime)
+- **Multi-stage build**: Builder + Runtime stages
+- **JVM optimization**: `-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC`
+- **Ports**: FacebookIntegration (8400), Gateway (1106)
+
+### Business Logic Integration
+- **BusinessService**: Đã merge vào FacebookIntegration
+- **Endpoints**: `/api/business/**` → FacebookIntegration
+- **Entities**: User, Address, Phone, Conversation, Message
+- **Services**: AddressService, PhoneService, ConversationService, MessageService, UserFacebookService
+- **DTOs**: Request/Response DTOs cho business operations
+
+### Performance & Monitoring
+- **Async processing**: ThreadPoolTaskExecutor cho webhook processing
+- **Batch operations**: Hibernate batch size 100
+- **Health checks**: Spring Boot Actuator endpoints
+- **Metrics**: Micrometer + Prometheus
+- **Tracing**: OpenTelemetry + Jaeger (optional)
+
+### Frontend Development (fe-84pos)
+- **Framework**: React 18.3.1 với TypeScript 4.9.5
+- **UI Library**: Material-UI (MUI) 6.1.3
+- **State Management**: Redux Toolkit 2.5.1
+- **HTTP Client**: Axios 1.7.7 với interceptors
+- **Routing**: React Router DOM 6.27.0
+- **Styling**: Emotion (CSS-in-JS) + MUI Theme
+- **Build Tool**: Create React App (react-scripts 5.0.1)
+
+#### Frontend Architecture
+- **Folder structure**: 
+  - `src/components/` - Reusable components
+  - `src/pages/` - Page components
+  - `src/slices/` - Redux slices
+  - `src/utils/` - Utility functions
+  - `src/types/` - TypeScript interfaces
+  - `src/constants/` - App constants
+- **Component naming**: PascalCase (e.g., `Conversation.tsx`)
+- **Hook naming**: camelCase với `use` prefix
+- **API integration**: Centralized trong `utils/api.ts`
+
+#### Frontend State Management
+- **Redux slices**: `auth.ts`, `alert.ts`
+- **Async thunks**: Sử dụng `createAsyncThunk` cho API calls
+- **Local storage**: Token management, page selection
+- **JWT handling**: Auto refresh token với interceptors
+
+#### Frontend Styling
+- **Theme**: Material-UI theme với custom colors
+- **Typography**: Be Vietnam Pro font family
+- **Responsive**: Mobile-first approach
+- **Assets**: WebP format cho images, multiple resolutions
+
+#### Frontend API Integration
+- **Base URL**: `process.env.REACT_APP_API_URL`
+- **Proxy**: `http://3.25.27.67:1106` (Gateway)
+- **Authentication**: Bearer token trong headers
+- **Error handling**: 401 auto logout, token refresh
+- **CORS**: Enabled cho cross-origin requests
+
+### Compliance & Enforcement
+- **Build**: Phải pass compilation và tests
+- **Code review**: naming, lombok, exception handling, logging, security, trace injection
+- **Dependencies**: Sử dụng exact versions, tránh version conflicts
+- **Database**: Tránh reserved words, sử dụng snake_case cho table names
+- **Frontend**: TypeScript strict mode, ESLint rules, component testing
