@@ -1,3 +1,29 @@
+# Build outputs
+*/build/
+*/target/
+*/bin/
+*/out/
+
+# Dependencies
+*/node_modules/
+*/.gradle/
+*/gradle/wrapper/
+
+# IDE files
+*/.idea/
+*/.vscode/
+*/.settings/
+*/.project
+*/.classpath
+
+# Logs
+*/logs/
+*.log
 
 # Database files
 *.db
+*.trace.db
+
+# OS files
+.DS_Store
+Thumbs.db

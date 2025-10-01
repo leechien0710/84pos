@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" shutdownHook="disable">
+    <Properties>
+        <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{serviceName}] [%X{traceId}] [%X{spanId}] [%thread] %C{1}.%M:%L - %msg%n</Property>
+    </Properties>
+
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+        </Console>
+    </Appenders>
+
+    <Loggers>
+        <Logger name="anhlv.auth" level="INFO" additivity="false">
+            <AppenderRef ref="Console" includeLocation="true"/>
+        </Logger>
+        
+        <!-- Tắt log 'Resolved [Exception]' để tránh trùng với GlobalExceptionHandler -->
+        <Logger name="org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver" level="OFF" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+        
+        <!-- Giảm log của Interceptor xuống WARN để tránh trùng lặp với Filter -->
+        <Logger name="anhlv.auth.interceptor" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+
+        <Logger name="io.opentelemetry.javaagent.tooling" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+
+        <Logger name="io.opentelemetry.javaagent.extension" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+
+        <Logger name="io.opentelemetry.exporter" level="INFO" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+
+        <Root level="INFO">
+            <AppenderRef ref="Console" includeLocation="true"/>
+        </Root>
+    </Loggers>
+</Configuration>
+

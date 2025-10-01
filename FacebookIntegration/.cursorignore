@@ -1,0 +1,11 @@
+# Thư mục build của Maven/Gradle
+target/
+build/
+
+# Cấu hình của IDE
+.idea/
+.vscode/
+*.iml
+
+# File log
+*.log# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)

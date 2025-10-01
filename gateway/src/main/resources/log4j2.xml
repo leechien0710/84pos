@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" shutdownHook="disable">
+    <Properties>
+        <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{serviceName}] [%X{traceId}] [%X{spanId}] [%thread] %C{1}.%M:%L - %msg%n</Property>
+    </Properties>
+
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+        </Console>
+    </Appenders>
+
+    <Loggers>
+        <Logger name="anhlv.gateway" level="INFO" additivity="false" includeLocation="true">
+            <AppenderRef ref="Console"/>
+        </Logger>
+
+        <!-- Request/Response logging filters -->
+        <Logger name="anhlv.gateway.filter" level="INFO" additivity="false" includeLocation="true">
+            <AppenderRef ref="Console"/>
+        </Logger>
+
+        <!-- Response body capture filter -->
+        <Logger name="anhlv.gateway.config" level="INFO" additivity="false" includeLocation="true">
+            <AppenderRef ref="Console"/>
+        </Logger>
+        
+        <!-- Chỉ tắt các log debug của OpenTelemetry agent, giữ nguyên application logs -->
+        <Logger name="io.opentelemetry.javaagent.tooling" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+        
+        <Logger name="io.opentelemetry.javaagent.extension" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+        
+        <!-- Giữ INFO level cho OpenTelemetry exporter để thấy span info -->
+        <Logger name="io.opentelemetry.exporter" level="INFO" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+        
+        <Root level="INFO" includeLocation="true">
+            <AppenderRef ref="Console"/>
+        </Root>
+    </Loggers>
+</Configuration>

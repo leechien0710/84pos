@@ -1,0 +1,94 @@
+# This file is a template, and might need editing before it works on your project.
+# This is a sample GitLab CI/CD configuration file that should run without any modifications.
+# It demonstrates a basic 3 stage CI/CD pipeline. Instead of real tests or scripts,
+# it uses echo commands to simulate the pipeline execution.
+#
+# A pipeline is composed of independent jobs that run scripts, grouped into stages.
+# Stages run in sequential order, but jobs within stages run in parallel.
+#
+# For more information, see: https://docs.gitlab.com/ee/ci/yaml/index.html#stages
+#
+# You can copy and paste this template into a new `.gitlab-ci.yml` file.
+# You should not add this template to an existing `.gitlab-ci.yml` file by using the `include:` keyword.
+#
+# To contribute improvements to CI/CD templates, please follow the Development guide at:
+# https://docs.gitlab.com/ee/development/cicd/templates.html
+# This specific template is located at:
+# https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Getting-Started.gitlab-ci.yml
+
+# Định nghĩa biến môi trường
+variables:
+  IMAGE_NAME: "chien0710/face-server:release" # Thay bằng tên Docker image của bạn
+  DOCKERHUB_USERNAME: "chienle07102001@gmail.com"         # Thay bằng username Docker Hub
+  DOCKERHUB_PASSWORD: "b19dccn099"           # Biến mật khẩu được lấy từ GitLab CI/CD Settings
+  EC2_USER: "ubuntu"  # Tên người dùng SSH trên EC2
+  EC2_HOST: "13.239.223.71"  # Địa chỉ IP hoặc DNS của EC2 instance
+  CONTAINER_NAME: "face-container"           # Tên container
+  HOST_PORT: "8400"                       # Cổng trên máy chủ
+  CONTAINER_PORT: "8400"                    # Cổng trong container
+stages:
+  - build_and_push
+  - deploy
+# Job để build và push Docker image
+build-and-push-job:
+  stage: build_and_push
+  image: docker:latest
+  services:
+    - docker:dind  # Bật Docker-in-Docker để chạy lệnh Docker
+  script:
+    - echo "Building Docker image..."
+    - docker build -t $IMAGE_NAME .
+    - echo "Logging in to Docker Hub..."
+    - echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
+    - echo "Pushing Docker image to Docker Hub..."
+    - docker push $IMAGE_NAME
+  only:
+    - release
+deploy-to-ec2-job:
+  stage: deploy
+  image: docker:latest
+  script:
+    - echo "Deploying Docker image to EC2..."
+    # tạo key
+    - mkdir -p ~/.ssh
+    - echo "$EC2_SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - cat ~/.ssh/id_rsa
+    - echo "Adding EC2 host to known hosts..."
+    - ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
+
+    # Đăng nhập vào Docker Hub trên EC2
+    - echo "Logging into Docker Hub on EC2..."
+    - ssh $EC2_USER@$EC2_HOST "echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin"
+
+    # Pull Docker image về EC2
+    - echo "Pulling Docker image from Docker Hub on EC2..."
+    - ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "sudo docker pull $IMAGE_NAME"
+
+    - echo "Docker image pulled successfully on EC2."
+
+    # Liệt kê các Docker images đã được đẩy lên
+    - echo "Listing Docker images on EC2..."
+    - ssh $EC2_USER@$EC2_HOST "sudo docker images"
+    # Xóa container cũ nếu có
+    - echo "Removing old container if it exists..."
+    - ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "sudo docker rm -f $CONTAINER_NAME || true"
+    # Chạy Docker container trên EC2
+    - echo "Running Docker container on EC2..."
+    - ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
+        sudo docker run -d \
+          --name $CONTAINER_NAME \
+          -p $HOST_PORT:$CONTAINER_PORT \
+          --log-driver=awslogs \
+          --log-opt awslogs-group="${CONTAINER_NAME}-group" \
+          --log-opt awslogs-stream="${CONTAINER_NAME}-stream" \
+          --log-opt awslogs-region=ap-southeast-2 \
+          --restart unless-stopped \ 
+          $IMAGE_NAME
+      EOF
+    - echo "Docker container is now running on EC2."
+    # Liệt kê các Docker container đã được đẩy lên
+    - echo "Listing Docker containers on EC2..."
+    - ssh $EC2_USER@$EC2_HOST "sudo docker ps -a"
+  only:
+    - release

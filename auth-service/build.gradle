@@ -1,0 +1,154 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.3.5'
+	id 'io.spring.dependency-management' version '1.1.6'
+}
+
+group = 'anhlv'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+repositories {
+	mavenLocal()
+	mavenCentral()
+}
+
+dependencyManagement {
+	imports {
+		mavenBom "org.springframework.cloud:spring-cloud-dependencies:2023.0.3" // Thay bằng phiên bản phù hợp
+	}
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-data-jdbc'
+	implementation 'org.springframework.boot:spring-boot-starter-aop'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'io.jsonwebtoken:jjwt:0.9.1'
+	compileOnly 'org.projectlombok:lombok'
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+	runtimeOnly 'com.mysql:mysql-connector-j'
+	annotationProcessor 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	implementation 'org.hibernate:hibernate-validator:6.2.0.Final'
+	implementation 'javax.xml.bind:jaxb-api:2.3.1'
+	implementation 'org.glassfish.jaxb:jaxb-runtime:2.3.1'
+	implementation 'com.h2database:h2:2.2.224'
+
+	// Bean Validation API
+	implementation 'javax.validation:validation-api:2.0.1.Final'
+	
+	// ShareLibrary dependency
+	implementation 'com.company:ShareLibrary:1.0-SNAPSHOT'
+	
+	// OpenTelemetry API để đọc Span hiện tại và lấy trace/span id
+	implementation 'io.opentelemetry:opentelemetry-api:1.32.0'
+	
+	// Log4j2 cho logging với tracing
+	implementation 'org.springframework.boot:spring-boot-starter-log4j2'
+	implementation 'com.lmax:disruptor:3.4.4'
+	implementation 'org.apache.logging.log4j:log4j-layout-template-json'
+	
+	// OpenTelemetry Java Agent
+	runtimeOnly 'io.opentelemetry.javaagent:opentelemetry-javaagent:1.32.0'
+	
+	// Exclude default logging
+	configurations {
+		all {
+			exclude group: 'org.springframework.boot', module: 'spring-boot-starter-logging'
+		}
+	}
+}
+
+// Configuration để tự động resolve OpenTelemetry Java Agent dependency (giống gateway)
+configurations {
+	otelAgent
+}
+
+dependencies {
+	// Thêm OpenTelemetry Java Agent như dependency (giống gateway)
+	otelAgent 'io.opentelemetry.javaagent:opentelemetry-javaagent:1.32.0'
+}
+
+// Task để copy OpenTelemetry Java Agent từ dependency (giống gateway)
+task copyOtelAgent(type: Copy) {
+	from configurations.otelAgent
+	into 'build/libs'
+	rename { 'opentelemetry-javaagent.jar' }
+}
+
+// Task để chạy Auth Service với OpenTelemetry (giống gateway)
+task runWithOtel(type: JavaExec, dependsOn: ['build', 'copyOtelAgent']) {
+	group = 'application'
+	description = 'Runs the Auth Service with OpenTelemetry Java Agent (single command like gateway)'
+	
+	mainClass = 'anhlv.auth.AuthApplication'
+	classpath = sourceSets.main.runtimeClasspath
+	
+	// JVM arguments giống gateway
+	jvmArgs = [
+		"-javaagent:build/libs/opentelemetry-javaagent.jar",
+		"-Dotel.javaagent.configuration-file=otel-agent.properties",
+		"-Dfile.encoding=UTF-8",
+		"-Dconsole.encoding=UTF-8"
+	]
+	
+	// Console output
+	standardOutput = System.out
+	errorOutput = System.err
+	
+	doFirst {
+		println "Starting Auth Service with OpenTelemetry..."
+		
+		// Kiểm tra OpenTelemetry agent file
+		def agentFile = file("build/libs/opentelemetry-javaagent.jar")
+		if (agentFile.exists()) {
+			println "OpenTelemetry Agent: ${agentFile.absolutePath} (${agentFile.length()} bytes)"
+		} else {
+			throw new GradleException("OpenTelemetry agent not found! Run: ./gradlew copyOtelAgent")
+		}
+		
+		// Kiểm tra config file
+		def configFile = file("otel-agent.properties")
+		if (configFile.exists()) {
+			println "Configuration: ${configFile.absolutePath}"
+		} else {
+			println "WARNING: otel-agent.properties not found!"
+		}
+		
+		println "Auth Service URL: http://localhost:5000"
+		println "H2 Console: http://localhost:5000/h2-console"
+		println "=" * 50
+		println "Note: Look for '[auth-service] [traceId] [spanId]' in logs to verify OpenTelemetry"
+		println "=" * 50
+	}
+}
+
+// Task để test OpenTelemetry hoạt động
+task testOtel(dependsOn: 'runWithOtel') {
+	group = 'verification'
+	description = 'Test OpenTelemetry distributed tracing'
+	
+	doLast {
+		println "Testing OpenTelemetry..."
+		println "1. Check logs for: [auth-service] [traceId] [spanId]"
+		println "2. Test endpoint: curl http://localhost:5000/api/auth/test"
+		println "3. Monitor: tail -f logs/application.log"
+	}
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}

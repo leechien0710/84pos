@@ -1,0 +1,35 @@
+# Stage 1: Build Stage
+FROM eclipse-temurin:17-jdk-alpine AS build
+WORKDIR /app
+
+# Copy build files (tách riêng để tận dụng cache Docker layer)
+COPY build.gradle settings.gradle gradlew ./
+COPY gradle ./gradle
+
+# Cấp quyền thực thi cho gradlew
+RUN chmod +x gradlew
+
+# Tải dependencies trước (tận dụng cache, giảm thời gian build khi mã nguồn thay đổi)
+RUN ./gradlew dependencies --no-daemon || return 0
+
+# Sao chép mã nguồn và build ứng dụng
+COPY src ./src
+RUN ./gradlew bootJar --no-daemon
+
+# Stage 2: Runtime Stage
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+
+# Tạo user không phải root để tăng bảo mật
+RUN addgroup -S spring && adduser -S spring -G spring
+USER spring:spring
+
+# Sao chép file JAR đã build từ stage build
+COPY --from=build /app/build/libs/*.jar app.jar
+
+# Tối ưu tham số JVM để sử dụng hiệu quả tài nguyên container
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+
+# Expose port và chạy ứng dụng
+EXPOSE 8400
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

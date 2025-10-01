@@ -1,0 +1,14 @@
+#spring:
+#  security:
+#    oauth2:
+#      client:
+#        registration:
+#          facebook:
+#            client-id: 3456664201316895
+#            client-secret: c552c8824bbe521f286a01689a9025ec
+#            client-id: 1327238317938126
+#            client-secret: b546e1f7dc5ffe3928d3328e7cf48978
+#            redirect-uri: "{baseUrl}/callback"
+##            scope: public_profile, email, pages_messaging, pages_read_engagement
+#            scope: public_profile, email
+

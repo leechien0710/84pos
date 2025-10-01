@@ -1,0 +1,65 @@
+spring:
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':  # Applies to all paths
+            allowedOrigins: "*"
+            allowedMethods: GET, POST, PUT, DELETE, OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: false
+      routes:
+        # Auth Service Routes - Production
+        - id: auth-register
+          uri: http://13.54.216.34:5000
+          predicates:
+            - Path=/api/auth/register
+          filters:
+            - StripPrefix=0
+        - id: auth-login
+          uri: http://13.54.216.34:5000
+          predicates:
+            - Path=/api/auth/login
+          filters:
+            - StripPrefix=0
+        - id: auth-validate
+          uri: http://13.54.216.34:5000
+          predicates:
+            - Path=/api/auth/validate
+          filters:
+            - StripPrefix=0
+        - id: auth-userinfo
+          uri: http://13.54.216.34:5000
+          predicates:
+            - Path=/api/auth/userinfo
+          filters:
+            - StripPrefix=0
+        # Facebook Service Routes - Production
+        - id: face-service
+          uri: http://13.54.216.34:8400
+          predicates:
+            - Path=/api/facebook/**
+          filters:
+            - StripPrefix=1
+
+# Production specific configurations
+server:
+  port: 1106
+
+# Logging for production
+logging:
+  level:
+    anhlv.gateway: INFO
+    org.springframework.cloud.gateway: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%X{serviceName}] [%X{traceId}] [%X{spanId}] [%thread] %-5level %logger{36} - %msg%n"
+
+# Management endpoints for production
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized

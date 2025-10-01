@@ -1,0 +1,1 @@
+export { HeaderArticle } from "./HeaderArticle";
