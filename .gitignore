@@ -19,9 +19,6 @@
 */logs/
 *.log
 
-# Database files
-*.db
-*.trace.db
 
 # OS files
 .DS_Store

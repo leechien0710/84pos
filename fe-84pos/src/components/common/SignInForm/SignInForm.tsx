@@ -42,6 +42,9 @@ export const SignInForm: FC<HTMLAttributes<HTMLDivElement>> = (props) => {
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
     type: "username" | "pass"
   ) => {
+    if (isError) {
+      setIsError(false); // Reset error khi user nhập lại
+    }
     if (type === "username") {
       setUsername(event.target.value);
     } else {
@@ -64,9 +67,11 @@ export const SignInForm: FC<HTMLAttributes<HTMLDivElement>> = (props) => {
         dispatch(currentUser({ user: user as any }));
       }
     } catch (e) {
-      if ((e as AxiosError).status === 404) {
+      const error = e as AxiosError;
+      if (error.status === 404 || error.status === 401) {
         setIsError(true);
       }
+      // Error message sẽ được hiển thị bởi interceptor trong api.ts
     }
     setIsLoading(false);
   };

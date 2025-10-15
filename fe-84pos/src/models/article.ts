@@ -14,7 +14,8 @@ export const getArticles = async (
     urlToReq += `&type=${type}`;
   }
   const res = await get(urlToReq);
-  return res.data;
+  // Backend bọc theo ApiResponse, phần dữ liệu thực nằm trong res.data.data
+  return res.data?.data;
 };
 
 export const getArticleDetail = async (

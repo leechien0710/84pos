@@ -1,6 +1,8 @@
 package com.example.facebookinteration.dto.facebookdto;
 
 import com.example.facebookinteration.dto.Paging;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.util.List;
@@ -29,6 +31,16 @@ public class FacebookCommentResponse {
         public static class From {
             private String id;
             private String name;
+            
+            // Default constructor
+            public From() {}
+            
+            // Constructor with parameters
+            @JsonCreator
+            public From(@JsonProperty("id") String id, @JsonProperty("name") String name) {
+                this.id = id;
+                this.name = name;
+            }
         }
 
         @Data

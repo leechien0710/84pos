@@ -1,7 +1,6 @@
 package com.example.facebookinteration.service.impl;
 
 import com.example.facebookinteration.constant.enums.PageStatus;
-import com.example.facebookinteration.constant.exception.CustomException;
 import com.example.facebookinteration.dto.res.PageRes;
 import com.example.facebookinteration.entity.PageEntity;
 import com.example.facebookinteration.entity.Sender;
@@ -13,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -38,8 +38,10 @@ public class PageService {
         List<PageEntity> pageEntities = (status == null) ? pageRepository.findByUserId(userId)
                 : pageRepository.findAllByUserIdAndStatus(userId, status);
 
+        // Trả về mảng rỗng thay vì throw exception
         if (pageEntities == null || pageEntities.isEmpty()) {
-            throw new CustomException(404, "No pages found for user ID: " + userId);
+            log.info("No pages found for user ID: {} with status: {}", userId, status);
+            return new ArrayList<>();
         }
 
         // Lấy tất cả Sender một lần để giảm số lần truy vấn DB
@@ -56,6 +58,7 @@ public class PageService {
                         .pageId(pageEntity.getPageId())
                         .pageName(null) // hoặc null / "" tùy nhu cầu
                         .pageAvatarUrl(null) // hoặc ảnh mặc định
+                        .status(pageEntity.getStatus()) // Thêm status từ PageEntity
                         .build();
                     }
 
@@ -63,6 +66,7 @@ public class PageService {
                             .pageId(pageEntity.getPageId())
                             .pageName(sender.getName())
                             .pageAvatarUrl(sender.getAvatar())
+                            .status(pageEntity.getStatus()) // Thêm status từ PageEntity
                             .build();
                 })
                 .collect(Collectors.toList());

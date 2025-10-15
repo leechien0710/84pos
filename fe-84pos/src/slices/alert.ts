@@ -38,27 +38,27 @@ export const alertSlice = createSlice({
 export const { showAlert, hideAlert } = alertSlice.actions;
 
 const setValueToAlert =
-  (message: string, classify: AlertColor): AppThunk =>
+  (message: string, classify: AlertColor, timeout: number): AppThunk =>
   async (dispatch) => {
     return new Promise((resolve) => {
       dispatch(showAlert({ message, classify }));
       setTimeout(() => {
         dispatch(hideAlert());
         resolve();
-      }, TIMEOUT_ALERT);
+      }, timeout);
     });
   };
 
 export const setNotificationSuccess = (message: string) =>
-  setValueToAlert(message, "success");
+  setValueToAlert(message, "success", 2000);
 
 export const setNotificationInfo = (message: string) =>
-  setValueToAlert(message, "info");
+  setValueToAlert(message, "info", TIMEOUT_ALERT);
 
 export const setNotificationError = (message: string) =>
-  setValueToAlert(message, "error");
+  setValueToAlert(message, "error", 5000);
 
 export const setNotificationWarning = (message: string) =>
-  setValueToAlert(message, "warning");
+  setValueToAlert(message, "warning", 5000);
 
 export default alertSlice.reducer;

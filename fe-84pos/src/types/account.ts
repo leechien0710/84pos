@@ -27,6 +27,14 @@ export interface IPage {
   pageAvatarUrl: string;
   pageId: string;
   pageName: string;
+  status: number;
+}
+
+export const enum PageStatus {
+  ACTIVE = 1,
+  INACTIVE = 0,
+  SYNCING = 2,
+  FAILED = 3,
 }
 
 export type AccountType = "tiktok" | "facebook";

@@ -8,7 +8,9 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
-
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
 import com.example.facebookinteration.constant.Constant;
@@ -55,25 +57,107 @@ public class CommentServiceSyncImpl implements CommentService {
     }
 
     @Override
+    @Retryable(
+        value = { Exception.class },
+        maxAttempts = 3,
+        backoff = @Backoff(delay = 1000)
+    )
     public void syncComment(String postId, String accessToken) {
         try {
+            log.info("COMMENT_API_START: postId={}", postId);
             FacebookCommentResponse commentResponse = getCommentsSync(postId, accessToken);
+            log.info("COMMENT_API_DONE: postId={}", postId);
+            
+            log.info("COMMENT_HANDLE_START: postId={}", postId);
             handleSyncComments(commentResponse.getComments(), postId);
+            log.info("COMMENT_HANDLE_DONE: postId={}", postId);
         } catch (Exception e) {
-            log.error("syncComment (sync) has error occurred: {}", e.getMessage(), e);
-            throw new CustomException(400, "Đồng bộ commnent thất bại");
+            log.error("COMMENT_SYNC_ERROR: postId={}, error={}", postId, e.getMessage());
+            throw e;
         }
     }
 
-    public FacebookCommentResponse getCommentsSync(String postId, String accessToken) {
-        Map<String, String> params = Map.of(
-                "fields", "comments{attachment,from,created_time,message,comments{attachment,from,message}}");
+    @Recover
+    public void recover(Exception e, String postId, String accessToken) {
+        log.error("COMMENT_RETRY_FAILED: postId={}, error={} (after 3 retries)", postId, e.getMessage());
+        // In a real-world scenario, you might want to mark the post as failed to sync comments.
+        // For now, we just log the final failure.
+    }
 
-        return facebookClient.callApiSync(
-                postId,
-                params,
-                accessToken,
-                FacebookCommentResponse.class);
+    public FacebookCommentResponse getCommentsSync(String postId, String accessToken) {
+        log.info("COMMENT_API_CALL: postId={}, token={}..., calling Facebook API with RestFB", postId, 
+                accessToken.substring(0, Math.min(10, accessToken.length())));
+        long startTime = System.currentTimeMillis();
+        
+        try {
+            com.restfb.FacebookClient fbClient = new com.restfb.DefaultFacebookClient(accessToken, com.restfb.Version.LATEST);
+            
+            com.restfb.types.Comment comment = fbClient.fetchObject(postId, com.restfb.types.Comment.class, 
+                    com.restfb.Parameter.with("fields", "comments{attachment,from,created_time,message,comments{attachment,from,message}}"));
+            
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("COMMENT_API_RESPONSE: postId={}, duration={}ms, using RestFB", postId, duration);
+            
+            // Convert RestFB Comment to FacebookCommentResponse
+            return convertRestFBToResponse(comment);
+            
+        } catch (Exception e) {
+            long duration = System.currentTimeMillis() - startTime;
+            log.error("COMMENT_API_FAILED: postId={}, duration={}ms, error={}", postId, duration, e.getMessage());
+            throw e;
+        }
+    }
+    
+    private FacebookCommentResponse convertRestFBToResponse(com.restfb.types.Comment restFBComment) {
+        FacebookCommentResponse response = new FacebookCommentResponse();
+        
+        if (restFBComment != null && restFBComment.getComments() != null) {
+            FacebookCommentResponse.Comments comments = new FacebookCommentResponse.Comments();
+            java.util.List<FacebookCommentResponse.CommentData> commentDataList = new java.util.ArrayList<>();
+            
+            for (com.restfb.types.Comment childComment : restFBComment.getComments().getData()) {
+                FacebookCommentResponse.CommentData commentData = new FacebookCommentResponse.CommentData();
+                commentData.setId(childComment.getId());
+                commentData.setMessage(childComment.getMessage());
+                // Convert Date to ISO string format
+                if (childComment.getCreatedTime() != null) {
+                    java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ");
+                    commentData.setCreated_time(sdf.format(childComment.getCreatedTime()));
+                }
+                
+                if (childComment.getFrom() != null) {
+                    FacebookCommentResponse.CommentData.From from = new FacebookCommentResponse.CommentData.From();
+                    from.setId(childComment.getFrom().getId());
+                    from.setName(childComment.getFrom().getName());
+                    commentData.setFrom(from);
+                }
+                
+                commentDataList.add(commentData);
+            }
+            
+            comments.setData(commentDataList);
+            response.setComments(comments);
+        }
+        
+        return response;
+    }
+    
+    private String extractAccessTokenFromUrl(String url) {
+        try {
+            java.net.URI uri = java.net.URI.create(url);
+            String query = uri.getQuery();
+            if (query != null) {
+                String[] params = query.split("&");
+                for (String param : params) {
+                    if (param.startsWith("access_token=")) {
+                        return param.substring("access_token=".length());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to extract access token from URL: {}", url);
+        }
+        return null;
     }
 
     @Override
@@ -141,15 +225,23 @@ public class CommentServiceSyncImpl implements CommentService {
     }
 
     public void handleSyncComments(FacebookCommentResponse.Comments comments, String postId) {
+        log.info("COMMENT_HANDLE_START: postId={}, comments={}", postId, 
+                comments != null && comments.getData() != null ? comments.getData().size() : 0);
+        
         if (comments == null || comments.getData() == null) {
+            log.info("COMMENT_HANDLE_EMPTY: postId={}", postId);
             return;
         }
 
         Map<String, String> phoneMap = new HashMap<>();
         List<CommentEntity> allComments = new ArrayList<>();
-        String nextPageUrl = comments.getPaging().getNext();
+        String nextPageUrl = comments.getPaging() != null ? comments.getPaging().getNext() : null;
+        int pageCount = 0;
 
         do {
+            pageCount++;
+            log.info("COMMENT_PAGE_START: postId={}, page={}, comments={}", postId, pageCount, comments.getData().size());
+            
             List<CommentEntity> commentEntities = new ArrayList<>();
 
             for (FacebookCommentResponse.CommentData commentData : comments.getData()) {
@@ -169,16 +261,28 @@ public class CommentServiceSyncImpl implements CommentService {
                 }
             }
 
+            log.info("COMMENT_SAVE_START: postId={}, page={}, comments={}", postId, pageCount, commentEntities.size());
             commentRepo.saveAll(commentEntities);
+            log.info("COMMENT_SAVE_DONE: postId={}, page={}, comments={}", postId, pageCount, commentEntities.size());
 
             // Fetch next page
             if (nextPageUrl != null && !nextPageUrl.isEmpty()) {
                 try {
-                    Object rawResponse = facebookClient.callApiByUrlSync(nextPageUrl);
-                    comments = DataUtils.convertToTargetType(rawResponse, FacebookCommentResponse.Comments.class);
-                    nextPageUrl = comments.getPaging().getNext();
+                    log.info("COMMENT_NEXT_PAGE: postId={}, page={}, url={}", postId, pageCount + 1, nextPageUrl);
+                    
+                    // Parse access token from URL
+                    String accessToken = extractAccessTokenFromUrl(nextPageUrl);
+                    com.restfb.FacebookClient fbClient = new com.restfb.DefaultFacebookClient(accessToken, com.restfb.Version.LATEST);
+                    
+                    // Use RestFB to fetch next page
+                    com.restfb.types.Comment nextComment = fbClient.fetchObject(postId, com.restfb.types.Comment.class, 
+                            com.restfb.Parameter.with("fields", "comments{attachment,from,created_time,message,comments{attachment,from,message}}"));
+                    
+                    FacebookCommentResponse nextResponse = convertRestFBToResponse(nextComment);
+                    comments = nextResponse.getComments();
+                    nextPageUrl = comments.getPaging() != null ? comments.getPaging().getNext() : null;
                 } catch (Exception e) {
-                    log.error("Error fetching next page of comments (sync): {}", e.getMessage(), e);
+                    log.error("COMMENT_PAGE_ERROR: postId={}, error={}", postId, e.getMessage());
                     break;
                 }
             } else {
@@ -188,9 +292,12 @@ public class CommentServiceSyncImpl implements CommentService {
         } while (nextPageUrl != null);
 
         // Xử lý lưu số điện thoại sau khi đã gom hết
+        log.info("COMMENT_PHONE_START: postId={}, phones={}", postId, phoneMap.size());
         savePhonesFromMap(phoneMap);
-
-        log.info("Handled sync of {} comments with phone extraction", allComments.size());
+        log.info("COMMENT_PHONE_DONE: postId={}", postId);
+        
+        // Log tổng kết
+        log.info("COMMENT_COMPLETE: postId={}, totalComments={}, pages={}", postId, allComments.size(), pageCount);
     }
 
     private void processComment(FacebookCommentResponse.CommentData commentData,
@@ -210,9 +317,17 @@ public class CommentServiceSyncImpl implements CommentService {
             if (!phoneNumbers.isEmpty()) {
                 hasPhone = true;
 
-                FacebookCommentResponse.CommentData.From from = DataUtils.convertToTargetType(entity.getFromUser(),
-                        FacebookCommentResponse.CommentData.From.class);
-                String fromId = from != null ? from.getId() : null;
+                // Parse JSON string to get fromId directly
+                String fromId = null;
+                if (entity.getFromUser() != null) {
+                    try {
+                        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                        com.fasterxml.jackson.databind.JsonNode jsonNode = mapper.readTree(entity.getFromUser());
+                        fromId = jsonNode.get("id").asText();
+                    } catch (Exception e) {
+                        log.warn("Failed to parse fromUser JSON: {}", entity.getFromUser());
+                    }
+                }
 
                 for (String phoneNumber : phoneNumbers) {
                     phoneMap.put(phoneNumber, fromId);
@@ -257,9 +372,6 @@ public class CommentServiceSyncImpl implements CommentService {
         }
 
         phoneRepository.saveAll(phonesToSave);
-
-        long duration = System.currentTimeMillis() - start;
-        log.info("Saved {} phones in {} ms", phonesToSave.size(), duration);
     }
 
     @Override

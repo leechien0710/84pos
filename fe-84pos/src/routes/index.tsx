@@ -13,7 +13,7 @@ import { SplashScreen } from "../components/common/SplashScreen";
 import Alert from "@mui/material/Alert";
 
 export const Routing: FC<HTMLAttributes<HTMLDivElement>> = () => {
-  const { user } = useAppSelector((state) => state.auth);
+  const { user, fbUser } = useAppSelector((state) => state.auth);
   const { isShowAlert, message, classify } = useAppSelector(
     (state) => state.alert
   );
@@ -40,7 +40,6 @@ export const Routing: FC<HTMLAttributes<HTMLDivElement>> = () => {
     const fetchDataForUser = async () => {
       if (user) {
         await dispatch(getUserFacebook());
-        await dispatch(fetchListFbPageActive());
       }
     };
 
@@ -48,6 +47,20 @@ export const Routing: FC<HTMLAttributes<HTMLDivElement>> = () => {
       fetchDataForUser();
     }
   }, [user, isLoading, dispatch]);
+
+  useEffect(() => {
+    // Luôn chạy khi fbUser thay đổi để lấy danh sách page
+    const fetchPagesForUser = async () => {
+      // Chỉ gọi khi có fbUser và fbUser này CHƯA fetch pages (pages === undefined)
+      // KHÔNG check pages.length > 0 vì API có thể trả về [] (mảng rỗng hợp lệ)
+      const alreadyFetched = fbUser?.some((user) => user.pages !== undefined);
+      if (fbUser && fbUser.length > 0 && !alreadyFetched) {
+        await dispatch(fetchListFbPageActive());
+      }
+    };
+
+    fetchPagesForUser();
+  }, [fbUser, dispatch]);
 
   if (isLoading) {
     return <SplashScreen />;

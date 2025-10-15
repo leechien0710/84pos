@@ -22,6 +22,7 @@ export const useStyles = makeStyles((theme: Theme) => ({
   deleteAcc: {
     color: theme.palette.error.main,
     padding: theme.spacing(2),
+    cursor: "pointer",
   },
   cellCustom: {
     "@media(max-width: 580px)": {
@@ -30,5 +31,6 @@ export const useStyles = makeStyles((theme: Theme) => ({
   },
   addPage: {
     padding: theme.spacing(2),
+    cursor: "pointer",
   },
 }));

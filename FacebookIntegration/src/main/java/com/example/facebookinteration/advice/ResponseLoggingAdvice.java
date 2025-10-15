@@ -3,6 +3,7 @@ package com.example.facebookinteration.advice;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
@@ -21,7 +22,9 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 public class ResponseLoggingAdvice implements ResponseBodyAdvice<Object> {
     
     private static final Logger logger = LoggerFactory.getLogger(ResponseLoggingAdvice.class);
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Override
     public boolean supports(MethodParameter returnType, Class<? extends HttpMessageConverter<?>> converterType) {
@@ -33,16 +36,7 @@ public class ResponseLoggingAdvice implements ResponseBodyAdvice<Object> {
                                 Class<? extends HttpMessageConverter<?>> selectedConverterType,
                                 ServerHttpRequest request, ServerHttpResponse response) {
         
-        // Log response body sau khi đã được wrap bởi ApiResponseAdvice
-        if (body != null) {
-            try {
-                String responseBody = objectMapper.writeValueAsString(body);
-                logger.info("RESPONSE BODY: {}", responseBody);
-            } catch (Exception e) {
-                logger.debug("Could not serialize response body: {}", e.getMessage());
-            }
-        }
-        
+        // Không log gì cả - response body sẽ được log ở interceptor
         return body;
     }
 }

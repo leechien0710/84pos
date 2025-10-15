@@ -1,7 +1,6 @@
 package anhlv.gateway.exception;
 
-import com.company.common.apiresponse.CustomException;
-import com.company.common.apiresponse.ApiResponse;
+import anhlv.gateway.model.ApiResponse;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.boot.web.reactive.error.ErrorWebExceptionHandler;
@@ -104,11 +103,12 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
             
             try {
                 String jsonResponse = objectMapper.writeValueAsString(errorResponse);
-                logRequestEnd(startTime, customEx.getCode(), jsonResponse);
+                exchange.getAttributes().put("responseBody", jsonResponse); // Capture body for logging
                 DataBuffer buffer = response.bufferFactory().wrap(jsonResponse.getBytes());
                 return response.writeWith(Mono.just(buffer));
             } catch (JsonProcessingException e) {
-                logRequestEnd(startTime, customEx.getCode(), "{\"error\":\"Failed to serialize error response\"}");
+                String errorJson = "{\"error\":\"Failed to serialize error response\"}";
+                exchange.getAttributes().put("responseBody", errorJson); // Capture fallback body
                 logger.error("Error serializing error response", e);
                 return Mono.error(e);
             }
@@ -124,11 +124,12 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
             
             try {
                 String jsonResponse = objectMapper.writeValueAsString(errorResponse);
-                logRequestEnd(startTime, 404, jsonResponse);
+                exchange.getAttributes().put("responseBody", jsonResponse); // Capture body for logging
                 DataBuffer buffer = response.bufferFactory().wrap(jsonResponse.getBytes());
                 return response.writeWith(Mono.just(buffer));
             } catch (JsonProcessingException e) {
-                logRequestEnd(startTime, 404, "{\"error\":\"Failed to serialize error response\"}");
+                String errorJson = "{\"error\":\"Failed to serialize error response\"}";
+                exchange.getAttributes().put("responseBody", errorJson); // Capture fallback body
                 logger.error("Error serializing error response", e);
                 return Mono.error(e);
             }
@@ -146,11 +147,12 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
                 
                 try {
                     String jsonResponse = objectMapper.writeValueAsString(errorResponse);
-                    logRequestEnd(startTime, 404, jsonResponse);
+                    exchange.getAttributes().put("responseBody", jsonResponse); // Capture body for logging
                     DataBuffer buffer = response.bufferFactory().wrap(jsonResponse.getBytes());
                     return response.writeWith(Mono.just(buffer));
                 } catch (JsonProcessingException e) {
-                    logRequestEnd(startTime, 404, "{\"error\":\"Failed to serialize error response\"}");
+                    String errorJson = "{\"error\":\"Failed to serialize error response\"}";
+                    exchange.getAttributes().put("responseBody", errorJson); // Capture fallback body
                     logger.error("Error serializing error response", e);
                     return Mono.error(e);
                 }
@@ -169,11 +171,12 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
             
             try {
                 String jsonResponse = objectMapper.writeValueAsString(errorResponse);
-                logRequestEnd(startTime, 503, jsonResponse);
+                exchange.getAttributes().put("responseBody", jsonResponse); // Capture body for logging
                 DataBuffer buffer = response.bufferFactory().wrap(jsonResponse.getBytes());
                 return response.writeWith(Mono.just(buffer));
             } catch (JsonProcessingException e) {
-                logRequestEnd(startTime, 503, "{\"error\":\"Failed to serialize error response\"}");
+                String errorJson = "{\"error\":\"Failed to serialize error response\"}";
+                exchange.getAttributes().put("responseBody", errorJson); // Capture fallback body
                 logger.error("Error serializing error response", e);
                 return Mono.error(e);
             }
@@ -190,23 +193,15 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
         
         try {
             String jsonResponse = objectMapper.writeValueAsString(errorResponse);
-            logRequestEnd(startTime, 500, jsonResponse);
+            exchange.getAttributes().put("responseBody", jsonResponse); // Capture body for logging
             DataBuffer buffer = response.bufferFactory().wrap(jsonResponse.getBytes());
             return response.writeWith(Mono.just(buffer));
         } catch (JsonProcessingException e) {
-            logRequestEnd(startTime, 500, "{\"error\":\"Failed to serialize error response\"}");
+            String errorJson = "{\"error\":\"Failed to serialize error response\"}";
+            exchange.getAttributes().put("responseBody", errorJson); // Capture fallback body
             logger.error("Error serializing error response", e);
             return Mono.error(e);
         }
     }
 
-    private void logRequestEnd(long startTime, int statusCode, String body) {
-        long duration = System.currentTimeMillis() - startTime;
-        logger.info("STATUS: {}, DURATION: {}ms, BODY: {}",
-                statusCode,
-                duration,
-                body.length() > 2048 ? body.substring(0, 2048) + "..." : body);
-        logger.info("=========================REQUEST END===================================");
-        ThreadContext.clearMap();
-    }
 }

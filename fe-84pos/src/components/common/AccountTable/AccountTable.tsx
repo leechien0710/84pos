@@ -1,4 +1,4 @@
-import { HTMLAttributes, FC, ChangeEvent } from "react";
+import React, { HTMLAttributes, FC, ChangeEvent } from "react";
 import {
   Grid2 as Grid,
   TableContainer,
@@ -121,8 +121,8 @@ export const AccountTable: FC<
           <TableBody>
             {fbUser && fbUser.length > 0 ? (
               <>
-                {fbUser.map((row) => (
-                  <>
+                {fbUser.map((row, index) => (
+                  <React.Fragment key={`user-${row.userId || index}`}>
                     <AccountRow
                       row={{
                         ...pick(row, ["name", "avatar", "userId"]),
@@ -131,16 +131,18 @@ export const AccountTable: FC<
                       type={type}
                     />
                     {type === "facebook" &&
-                      row?.pages?.map((sub) => (
+                      row?.pages?.map((sub, subIndex) => (
                         <FacebookAccountRow
+                          key={`page-${sub?.pageId || subIndex}`}
                           avatar={sub?.pageAvatarUrl}
                           name={sub?.pageName}
                           pageId={sub?.pageId}
                           pageSelect={pageSelect}
                           onChangePage={onChangePage}
+                          status={sub?.status}
                         />
                       ))}
-                  </>
+                  </React.Fragment>
                 ))}
               </>
             ) : (

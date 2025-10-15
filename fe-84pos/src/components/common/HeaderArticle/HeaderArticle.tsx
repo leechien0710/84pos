@@ -18,6 +18,7 @@ import {
 interface IHeaderArticleProps {
   onSearch?: (query: string) => void;
   onFilterArticle?: (type: ArticleType) => void;
+  onRefresh?: () => void;
   articleTypeValue: ArticleType;
 }
 
@@ -28,6 +29,7 @@ export const HeaderArticle: FC<
   const {
     onSearch,
     onFilterArticle,
+    onRefresh,
     articleTypeValue,
     className,
     ...otherProps
@@ -69,6 +71,7 @@ export const HeaderArticle: FC<
           variant="contained"
           startIcon={<ReplayIcon />}
           className={classes.btn}
+          onClick={onRefresh}
         >
           <Typography
             variant="caption"

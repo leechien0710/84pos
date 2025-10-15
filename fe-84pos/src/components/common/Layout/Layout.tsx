@@ -1,4 +1,4 @@
-import React, { HTMLAttributes, FC } from "react";
+import React, { HTMLAttributes, FC, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import Box from "@mui/material/Box";
 import MuiDrawer from "@mui/material/Drawer";
@@ -22,15 +22,44 @@ import { MenuItem } from "../MenuItem";
 import { AccountSection } from "../AccountSection";
 import { useStyles, DrawerHeader, Drawer, AppBar } from "./Layout.style";
 import { isHideAppBar } from "../../../utils/layout";
+import { useAppDispatch, useAppSelector } from "../../../hook";
+import { connectWebSocket, disconnectWebSocket } from "../../../utils/websocketService";
+import { setNotificationSuccess, setNotificationError } from "../../../slices/alert";
+import { fetchListFbPageActive } from "../../../slices/auth";
+import { PageStatus } from "../../../types/account";
 
 export const Layout: FC<HTMLAttributes<HTMLDivElement>> = (props) => {
   const classes = useStyles();
   const { children } = props;
   const [open, setOpen] = React.useState(false);
+  const { user } = useAppSelector((state) => state.auth);
+  const dispatch = useAppDispatch();
   const container =
     window !== undefined ? () => window.document.body : undefined;
   const isMobile = useDeviceType();
   const location = useLocation();
+
+  useEffect(() => {
+    if (user) {
+      const handleMessage = (notification: any) => {
+        console.log("Received notification:", notification);
+        const message = `${notification.pageName}: ${notification.message}`;
+        if (notification.status === PageStatus.ACTIVE) {
+          dispatch(setNotificationSuccess(message));
+          // Refresh data sau khi đồng bộ thành công
+          dispatch(fetchListFbPageActive());
+        } else {
+          dispatch(setNotificationError(message));
+        }
+      };
+
+      connectWebSocket(user.id, handleMessage);
+    }
+
+    return () => {
+      disconnectWebSocket();
+    };
+  }, [user, dispatch]);
 
   const handleDrawerClose = () => {
     setOpen(false);

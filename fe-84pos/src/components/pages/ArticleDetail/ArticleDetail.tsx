@@ -56,12 +56,12 @@ export const ArticleDetail: FC<
         _hasPhone
       );
       if (_hasPhone && isShowLoading) {
-        setComments(res?.content);
-        setCommentsFilter(res?.content);
+        setComments(res?.content || []);
+        setCommentsFilter(res?.content || []);
         setOffset(res?.content?.length || 0);
       } else {
-        setComments([...comments, ...res?.content]);
-        setCommentsFilter([...commentsFilter, ...res?.content]);
+        setComments([...comments, ...(res?.content || [])]);
+        setCommentsFilter([...commentsFilter, ...(res?.content || [])]);
         setOffset(offset + (res?.content?.length || 0));
       }
       setTotalPages(res?.page?.totalPages);

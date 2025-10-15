@@ -25,6 +25,12 @@ export const useStyles = makeStyles((theme: Theme) => ({
     backgroundColor: "#8A8A8A !important",
     color: `${theme.palette.primary.contrastText} !important`,
   },
+  chipActive: {
+    marginLeft: `${theme.spacing(2)} !important`,
+  },
+  chipInactive: {
+    marginLeft: `${theme.spacing(2)} !important`,
+  },
   borderImage: {
     "@media(max-width: 480px)": {
       display: "none",

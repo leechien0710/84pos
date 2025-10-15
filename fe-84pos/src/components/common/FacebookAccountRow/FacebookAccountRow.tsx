@@ -24,6 +24,7 @@ interface IFacebookAccountRowProps {
   name: string;
   pageId: string;
   pageSelect: string | null;
+  status: number;
   onChangePage: (event: ChangeEvent<HTMLInputElement>, pageId: string) => void;
 }
 
@@ -35,6 +36,7 @@ export const FacebookAccountRow: FC<
     avatar,
     name,
     pageId,
+    status,
     pageSelect,
     onChangePage,
     className,
@@ -48,11 +50,12 @@ export const FacebookAccountRow: FC<
     setIsLoading(true);
     try {
       await removeFbPage([pageId]);
-      await dispatch(fetchListFbPageActive());
+      // Reload trang để cập nhật dữ liệu mới
+      window.location.reload();
     } catch (e) {
       console.log(e);
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   return (
@@ -74,7 +77,8 @@ export const FacebookAccountRow: FC<
             <Radio
               checked={pageSelect === pageId}
               onChange={(event) => onChangePage(event, pageId)}
-              value={pageSelect}
+              value={pageSelect || ""}
+              disabled={status !== 1}
             />
           </Grid>
           <Badge
@@ -91,12 +95,20 @@ export const FacebookAccountRow: FC<
             <Avatar alt="user-avatar" src={avatar} />
           </Badge>
           <Typography className={classes.name}>{name}</Typography>
-          <Chip
-            label="Gỡ page"
-            size="small"
-            className={classes.chip}
-            onClick={onRemovePage}
-          />
+          {status === 1 ? (
+            <Chip label="Đang hoạt động" size="small" color="success" className={classes.chipActive} />
+          ) : (
+            <Chip label="Không hoạt động" size="small" className={classes.chipInactive} />
+          )}
+          {status === 1 && (
+            <Chip
+              label={isLoading ? "Đang xóa..." : "Gỡ page"}
+              size="small"
+              className={classes.chip}
+              onClick={onRemovePage}
+              disabled={isLoading}
+            />
+          )}
         </Grid>
       </TableCell>
     </TableRow>

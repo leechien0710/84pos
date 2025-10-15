@@ -14,6 +14,7 @@ import { addFbPages, getFbPage, syncAllPage } from "../../../../models/auth";
 import { useAppDispatch, useAppSelector } from "../../../../hook";
 import { IPage } from "../../../../types/account";
 import { fetchListFbPageActive } from "../../../../slices/auth";
+import { connectWebSocket, disconnectWebSocket } from "../../../../utils/websocketService";
 import { useStyles } from "./AddPagePopup.style";
 
 interface IAddPagePopupProps {
@@ -31,7 +32,7 @@ export const AddPagePopup: FC<
   const [pagesInactive, setPagesInactive] = useState<IPage[]>();
   const [pagesId, setPagesId] = useState<string[]>([]);
   const [isLoadingAdd, setIsLoadingAdd] = useState(false);
-  const { fbUser } = useAppSelector((state) => state.auth);
+  const { fbUser, user } = useAppSelector((state) => state.auth);
   const dispatch = useAppDispatch();
 
   const fetchFbPage = async () => {
@@ -39,13 +40,7 @@ export const AddPagePopup: FC<
     setIsLoading(true);
     try {
       const res = await getFbPage(fbUserId);
-      const fbUserSelect = find(fbUser, { userId: fbUserId });
-      const pagesUpdate = differenceBy(
-        res as IPage[],
-        fbUserSelect?.pages || [],
-        "pageId"
-      );
-      setPagesInactive(pagesUpdate);
+      setPagesInactive(res.data);
     } catch (e) {
       console.log(e);
     }
@@ -66,17 +61,44 @@ export const AddPagePopup: FC<
     try {
       await addFbPages(pagesId);
       await syncAllPage(pagesId);
-      await dispatch(fetchListFbPageActive());
-      onClose();
+      // API sync thành công, giữ loading state và chờ WebSocket notification
+      // Không reload ngay, chờ WebSocket báo "Đồng bộ thành công!"
     } catch (e) {
       console.log(e);
+      setIsLoadingAdd(false);
     }
-    setIsLoadingAdd(false);
   };
 
   useEffect(() => {
     fetchFbPage();
   }, [fbUserId, fbUser]);
+
+  // Lắng nghe WebSocket notification để reload trang khi đồng bộ thành công
+  useEffect(() => {
+    if (!user) return;
+
+    const handleWebSocketMessage = (data: any) => {
+      // Backend gửi object với status (số) và message
+      if (data && data.status === 1 && data.message?.includes('Đồng bộ thành công')) {
+        // WebSocket báo đồng bộ thành công (status=1=ACTIVE), reload trang
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000); // Delay 1 giây để user thấy thông báo
+      } else if (data && data.status === 4) {
+        // WebSocket báo đồng bộ thất bại (status=4=FAILED), tắt loading và hiển thị lỗi
+        setIsLoadingAdd(false);
+        console.error('Đồng bộ thất bại:', data.message);
+        // Có thể hiển thị toast/alert thông báo lỗi
+      }
+    };
+
+    // Kết nối WebSocket với userId
+    connectWebSocket(user.id, handleWebSocketMessage);
+    
+    return () => {
+      disconnectWebSocket();
+    };
+  }, [user]);
 
   return (
     <Dialog
@@ -100,17 +122,23 @@ export const AddPagePopup: FC<
       </Grid>
       <div
         className={`${classes.content} ${isLoading && classes.contentLoading}`}
+        style={{ position: 'relative' }}
       >
         {isLoading ? (
           <CircularProgress size={30} />
         ) : (
           <>
-            {map(pagesInactive, (page) => (
+            {map(pagesInactive, (page, index) => (
               <Grid
+                key={page?.pageId || `page-${index}`}
                 display="flex"
                 alignItems="center"
                 justifyContent="space-between"
                 className={classes.card}
+                style={{ 
+                  opacity: isLoadingAdd ? 0.5 : 1,
+                  pointerEvents: isLoadingAdd ? 'none' : 'auto'
+                }}
               >
                 <Grid display="flex" alignItems="center" gap={1}>
                   <Avatar src={page?.pageAvatarUrl} />
@@ -122,6 +150,32 @@ export const AddPagePopup: FC<
                 />
               </Grid>
             ))}
+            
+            {/* Loading overlay khi đang đồng bộ */}
+            {isLoadingAdd && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '16px',
+                  zIndex: 1000
+                }}
+              >
+                <CircularProgress size={40} />
+                <Typography variant="body2" color="primary" textAlign="center">
+                  Đang đồng bộ dữ liệu...<br />
+                  Vui lòng đợi cho đến khi nhận được thông báo thành công
+                </Typography>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -144,9 +198,13 @@ export const AddPagePopup: FC<
           color="primary"
           className={classes.btnAction}
           onClick={onAddPages}
+          disabled={isLoadingAdd || pagesId.length === 0}
         >
           {isLoadingAdd ? (
-            <CircularProgress size={18} color="inherit" />
+            <>
+              <CircularProgress size={18} color="inherit" style={{ marginRight: 8 }} />
+              Đang đồng bộ...
+            </>
           ) : (
             "Thêm"
           )}

@@ -79,6 +79,7 @@ export const Article: FC<HTMLAttributes<HTMLDivElement>> = () => {
         onFilterArticle={(articleType: ArticleType) =>
           onFetchArticles(true, articleType)
         }
+        onRefresh={() => onFetchArticles(true, filterArticle)}
         articleTypeValue={filterArticle}
       />
       <Box

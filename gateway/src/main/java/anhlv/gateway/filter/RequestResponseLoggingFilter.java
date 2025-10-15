@@ -12,14 +12,19 @@ import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.http.server.reactive.ServerHttpResponseDecorator;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import org.springframework.core.io.buffer.DataBufferFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicReference;
+import org.reactivestreams.Publisher;
+
 
 /**
  * GlobalFilter hợp nhất: Ghi log Request/Response và thêm TraceID vào Response Body.
@@ -33,57 +38,51 @@ public class RequestResponseLoggingFilter implements GlobalFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        long startTime = System.currentTimeMillis();
-        exchange.getAttributes().put("startTime", startTime); // Lưu thời gian bắt đầu
-        ServerHttpRequest request = exchange.getRequest();
+        final long startTime = System.currentTimeMillis();
+        logRequest(exchange);
+
+        ServerHttpResponse originalResponse = exchange.getResponse();
         
-        // Log Request từ body đã được cache
-        String requestBody = exchange.getAttributeOrDefault(ServerWebExchangeUtils.CACHED_REQUEST_BODY_ATTR, "");
-        logRequest(request, requestBody);
-
-        ServerHttpResponseDecorator decoratedResponse = new ServerHttpResponseDecorator(exchange.getResponse()) {
+        ServerHttpResponseDecorator decoratedResponse = new ServerHttpResponseDecorator(originalResponse) {
             @Override
-            public Mono<Void> writeWith(org.reactivestreams.Publisher<? extends DataBuffer> body) {
-                if (body instanceof Flux) {
-                    Flux<? extends DataBuffer> fluxBody = (Flux<? extends DataBuffer>) body;
-                    final int statusCode = getStatusCode().value();
-
-                    return super.writeWith(fluxBody.flatMap(dataBuffer -> {
-                        byte[] content = new byte[dataBuffer.readableByteCount()];
-                        dataBuffer.read(content);
-                        DataBufferUtils.release(dataBuffer);
-
-                        String originalBody = new String(content, StandardCharsets.UTF_8);
-                        byte[] modifiedBytes = content; // Mặc định là body gốc
-
-                        String contentType = getHeaders().getFirst("Content-Type");
-                        if (contentType != null && contentType.contains("application/json")) {
-                            try {
-                                String traceId = exchange.getAttribute("TRACE_ID");
-                                JsonNode jsonNode = objectMapper.readTree(originalBody);
-                                if (jsonNode.isObject()) {
-                                    ObjectNode objectNode = (ObjectNode) jsonNode;
-                                    objectNode.put("traceId", traceId);
-                                    String modifiedBody = objectMapper.writeValueAsString(objectNode);
-                                    modifiedBytes = modifiedBody.getBytes(StandardCharsets.UTF_8);
-                                }
-                            } catch (Exception e) {
-                                logger.error("Error modifying response body to add traceId", e);
-                            }
+            public Mono<Void> writeWith(Publisher<? extends DataBuffer> body) {
+                // Use a string builder to accumulate body parts
+                StringBuilder bodyBuilder = new StringBuilder();
+                
+                return super.writeWith(Flux.from(body)
+                    .doOnNext(dataBuffer -> {
+                        // Append each chunk to the builder
+                        try {
+                            bodyBuilder.append(StandardCharsets.UTF_8.decode(dataBuffer.asByteBuffer()));
+                        } catch (Exception e) {
+                            logger.warn("Could not decode response body chunk for logging", e);
                         }
-                        
-                        // Log response SAU KHI đã sửa đổi
-                        logResponse(startTime, exchange, statusCode, new String(modifiedBytes, StandardCharsets.UTF_8));
-                        
-                        getHeaders().setContentLength(modifiedBytes.length);
-                        return Mono.just(exchange.getResponse().bufferFactory().wrap(modifiedBytes));
-                    }));
-                }
-                return super.writeWith(body);
+                    })
+                    // This runs when the body publisher completes
+                    .doFinally(signalType -> {
+                        // Store the captured body (even if empty) for the final log
+                        exchange.getAttributes().put("responseBody", bodyBuilder.toString());
+                    })
+                );
             }
         };
 
-        return chain.filter(exchange.mutate().request(request).response(decoratedResponse).build());
+        return chain.filter(exchange.mutate().response(decoratedResponse).build())
+            .doFinally(signalType -> {
+                String responseBody = exchange.getAttribute("responseBody");
+                // If the body is null (e.g., never captured) or empty, log appropriately
+                if (responseBody == null || responseBody.isEmpty()) {
+                    responseBody = "<empty body>";
+                }
+                logResponse(startTime, exchange, getStatusCodeValue(exchange.getResponse()), responseBody);
+            });
+    }
+    
+    private int getStatusCodeValue(ServerHttpResponse response) {
+        if (response.getStatusCode() != null) {
+            return response.getStatusCode().value();
+        }
+        return 0; // Or some default value
     }
 
     private String sanitizeBody(String body, int maxLength) {
@@ -98,11 +97,21 @@ public class RequestResponseLoggingFilter implements GlobalFilter, Ordered {
         return sanitized;
     }
 
-    private void logRequest(ServerHttpRequest request, String body) {
+    private void logRequest(ServerWebExchange exchange) {
+        ServerHttpRequest request = exchange.getRequest();
+        
+        // Đọc cached body từ attribute (sau khi cacheRequestBody filter đã chạy)
+        Object cachedBody = exchange.getAttribute(ServerWebExchangeUtils.CACHED_REQUEST_BODY_ATTR);
+        String bodyStr = "";
+        if (cachedBody != null) {
+            bodyStr = cachedBody.toString();
+        }
+        
         logger.info("=========================REQUEST START=================================");
-        logger.info("PATH: {}, BODY: {}",
+        logger.info("PATH: {}, METHOD: {}, BODY: {}",
                 request.getPath().value(),
-                sanitizeBody(body, MAX_LOG_BODY_LENGTH));
+                request.getMethod(),
+                sanitizeBody(bodyStr, MAX_LOG_BODY_LENGTH));
     }
     
     private void logResponse(long startTime, ServerWebExchange exchange, int statusCode, String body) {
@@ -123,6 +132,6 @@ public class RequestResponseLoggingFilter implements GlobalFilter, Ordered {
     
     @Override
     public int getOrder() {
-        return Ordered.HIGHEST_PRECEDENCE;
+        return Ordered.LOWEST_PRECEDENCE; // Chạy SAU các route filters (bao gồm cacheRequestBody)
     }
 }

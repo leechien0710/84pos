@@ -123,7 +123,7 @@ export const getUserFacebook =
     try {
       dispatch(setFbUserStatus("loading"));
       const res = await userFacebook();
-      dispatch(updateFbUser({ fbUser: res }));
+      dispatch(updateFbUser({ fbUser: res.data }));
       dispatch(setFbUserStatus("succeeded"));
     } catch (e: any) {
       // Dispatch action để hiển thị lỗi cho người dùng
@@ -158,21 +158,22 @@ export const fetchListFbPageActive =
         return;
       }
       
-      // Kiểm tra xem đã có pages chưa
-      const hasPages = auth.fbUser.some(user => user.pages && user.pages.length > 0);
-      if (hasPages) {
+      // Kiểm tra xem đã fetch pages chưa (pages !== undefined)
+      // KHÔNG check pages.length > 0 vì API có thể trả về [] (mảng rỗng hợp lệ)
+      const alreadyFetched = auth.fbUser.some(user => user.pages !== undefined);
+      if (alreadyFetched) {
         return;
       }
       
       const newFbUser = await Promise.all(
         map(auth.fbUser, async (user) => {
-          const pages = await getFbPageActive(user.userId);
-          return { ...user, pages: pages };
+          const pagesRes = await getFbPageActive(user.userId);
+          return { ...user, pages: pagesRes.data };
         })
       );
       dispatch(updateFbUser({ fbUser: newFbUser }));
     } catch (e) {
-      // Silent error handling
+      console.error("Failed to fetch active Facebook pages:", e);
     }
   };
 

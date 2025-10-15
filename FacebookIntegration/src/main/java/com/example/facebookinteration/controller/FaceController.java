@@ -32,6 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpEntity;
@@ -63,11 +64,40 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import org.springframework.context.ApplicationEventPublisher;
+import com.example.facebookinteration.event.PageSyncEvent;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.restfb.types.User;
+import com.example.facebookinteration.repository.UserRepository;
 
 @Controller
 @RequestMapping()
 @Slf4j
 public class FaceController {
+    @Value("${facebook.app.id}")
+    private String clientId;
+    @Value("${facebook.app.secret}")
+    private String clientSecret;
+    @Value("${facebook.redirect.uri}")
+    private String redirectUri;
+    @Value("${facebook.scope}")
+    private String scope;
+    @Value("${facebook.url.frontend}")
+    private String frontendUrl;
+    @Value("${facebook.url.authorization}")
+    private String authorizationUrl;
+    @Value("${facebook.url.token}")
+    private String tokenUrl;
+    @Value("${facebook.url.user-info}")
+    private String userInfoUrl;
+    @Value("${facebook.url.pages}")
+    private String pagesUrl;
+    @Value("${facebook.url.conversation}")
+    private String conversationUrl;
+    @Value("${facebook.url.graph-api-base}")
+    private String graphApiBaseUrl;
+
     @Autowired
     private PageRepository pageRepository;
     @Autowired
@@ -90,6 +120,8 @@ public class FaceController {
     @Autowired
     private SenderRepository senderRepository;
     @Autowired
+    private UserRepository userRepository;
+    @Autowired
     private TokenService tokenService;
     @Autowired
     private ConversationService conversationService;
@@ -99,18 +131,10 @@ public class FaceController {
     private VideoService videoService;
     @Autowired
     private PageService pageService;
-    private static final String APP_ID = "1327238317938126";
-    private static final String AUTHORIZATION_URL = "https://www.facebook.com/dialog/oauth";
-    private static final String TOKEN_URL = "https://graph.facebook.com/oauth/access_token";
-    private static final String CLIENT_ID = "1327238317938126";
-    private static final String CLIENT_SECRET = "b546e1f7dc5ffe3928d3328e7cf48978";
-    private static final String REDIRECT_URI = "https://face84pos.click/api/face/callback";
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
     private static final String RESPONSE_TYPE = "code";
-    private static final String SCOPE = "public_profile, pages_messaging_subscriptions, pages_show_list, pages_messaging, ads_management, ads_read, business_management, leads_retrieval, page_events, pages_read_engagement, pages_manage_metadata, pages_read_user_content, pages_manage_ads, pages_manage_posts, pages_manage_engagement";
-    private static final String USER_INFO_URL = "https://graph.facebook.com/me";
-    private static final String PAGES_URL = "https://graph.facebook.com/me/accounts";
-    private static final String CONVERSATION_URL = "https://graph.facebook.com/{pageId}/conversations";
-    private static final String FRONTEND_URL = "https://84pos.vn/";
     private static final Logger logger = LoggerFactory.getLogger(FaceController.class);
 
     @GetMapping("/auth-url")
@@ -122,11 +146,11 @@ public class FaceController {
             logger.warn("Auth URL failed - missing state");
             throw new CustomException(404, "State parameter is not found");
         }
-        String url = UriComponentsBuilder.fromHttpUrl(AUTHORIZATION_URL)
-                .queryParam("client_id", CLIENT_ID)
-                .queryParam("redirect_uri", REDIRECT_URI)
+        String url = UriComponentsBuilder.fromHttpUrl(authorizationUrl)
+                .queryParam("client_id", clientId)
+                .queryParam("redirect_uri", redirectUri)
                 .queryParam("response_type", RESPONSE_TYPE)
-                .queryParam("scope", SCOPE)
+                .queryParam("scope", scope)
                 .queryParam("state", state) // Thêm tham số state
                 .toUriString();
         // Tạo response body chứa URL
@@ -140,15 +164,15 @@ public class FaceController {
             HttpServletResponse res) throws IOException {
         try {
             // Tạo URL yêu cầu token truy cập từ Facebook
-            String tokenUrl = UriComponentsBuilder.fromHttpUrl(TOKEN_URL)
-                    .queryParam("client_id", CLIENT_ID)
-                    .queryParam("redirect_uri", REDIRECT_URI)
-                    .queryParam("client_secret", CLIENT_SECRET)
+            String url = UriComponentsBuilder.fromHttpUrl(tokenUrl)
+                    .queryParam("client_id", clientId)
+                    .queryParam("redirect_uri", redirectUri)
+                    .queryParam("client_secret", clientSecret)
                     .queryParam("code", code)
                     .toUriString();
 
             // Sử dụng RestTemplate để gửi yêu cầu GET và nhận phản hồi
-            ResponseEntity<Map> response = restTemplate.getForEntity(tokenUrl, Map.class);
+            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
             if (!StringUtils.hasText(state)) {
                 logger.warn("Callback failed - missing state, code={} ", code);
                 throw new CustomException(404, "State Not Found");
@@ -178,7 +202,7 @@ public class FaceController {
                 logger.warn("Callback failed - response body null, state={} ", state);
                 throw new CustomException(403, "User Access token not found");
             }
-            res.sendRedirect(FRONTEND_URL);
+            res.sendRedirect(frontendUrl);
         } catch (HttpClientErrorException e) {
             throw new CustomException(e.getStatusCode().value(), e.getMessage());
         }
@@ -187,13 +211,13 @@ public class FaceController {
     private UserFacebook getUserProfile(String accessToken, Long state) {
         try {
             // Tạo URL yêu cầu thông tin người dùng từ Facebook
-            String userInfoUrl = UriComponentsBuilder.fromHttpUrl(USER_INFO_URL)
+            String url = UriComponentsBuilder.fromHttpUrl(userInfoUrl)
                     .queryParam("access_token", accessToken)
                     .queryParam("fields", "id,name,picture") // Thêm trường picture để lấy ảnh đại diện
                     .toUriString();
 
             // Sử dụng RestTemplate để gửi yêu cầu GET và nhận phản hồi
-            ResponseEntity<Map> response = restTemplate.getForEntity(userInfoUrl, Map.class);
+            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
 
             // Xử lý thông tin người dùng
             Map<String, Object> userInfo = response.getBody();
@@ -210,7 +234,7 @@ public class FaceController {
                         .userId(userId)
                         .userAppId(state)
                         .name(userName)
-                        .userAccessToken(tokenService.getLongLivedToken(CLIENT_ID, CLIENT_SECRET, accessToken))
+                        .userAccessToken(tokenService.getLongLivedToken(clientId, clientSecret, accessToken))
                         .avatar(profilePictureUrl)
                         // .expiresAt(tokenService.debugAccessToken(accessToken))
                         .build());
@@ -228,13 +252,13 @@ public class FaceController {
     public void getUserPages(UserFacebook userFacebook, String accessToken) {
         try {
             // Tạo URL yêu cầu danh sách các trang của người dùng
-            String pagesUrl = UriComponentsBuilder.fromHttpUrl(PAGES_URL)
+            String url = UriComponentsBuilder.fromHttpUrl(pagesUrl)
                     .queryParam("access_token", accessToken)
                     .queryParam("fields", "id,name,picture,access_token") // Thêm trường picture để lấy avatar
                     .toUriString();
 
             // Sử dụng RestTemplate để gửi yêu cầu GET và nhận phản hồi
-            ResponseEntity<Map> response = restTemplate.getForEntity(pagesUrl, Map.class);
+            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
 
             // Xử lý danh sách các trang
             Map<String, Object> pagesInfo = response.getBody();
@@ -259,7 +283,7 @@ public class FaceController {
                                 .userId(userFacebook.getUserId())
                                 .status(PageStatus.INACTIVE.getValue())
                                 .pageAccessToken(
-                                        tokenService.getLongLivedToken(CLIENT_ID, CLIENT_SECRET, pageAccessToken))
+                                        tokenService.getLongLivedToken(clientId, clientSecret, pageAccessToken))
                                 // .expiresAt(tokenService.debugAccessToken(accessToken))
                                 .build();
                         pageEntities.add(pageEntity);
@@ -283,40 +307,19 @@ public class FaceController {
     }
 
     @PostMapping("pages/sync-all")
-    public ResponseEntity<Map<String, Object>> syncAllPage(@RequestBody PageMesReq pageMesReq) {
+    public ResponseEntity<String> syncAllPage(@RequestBody PageMesReq pageMesReq) {
         List<String> pageIds = pageMesReq.getPageIds();
-        // 1. Đánh dấu tất cả page đang đồng bộ
+        // 1. Đánh dấu tất cả page là "đang đồng bộ"
         pageService.updatePageStatus(pageIds, PageStatus.SYNCING.getValue());
 
-        // 2. Thực hiện đồng bộ ở background, cập nhật trạng thái từng page
-        CompletableFuture.runAsync(() -> {
-            for (String pageId : pageIds) {
-                try {
-                    PageEntity pageEntity = pageRepository.findByPageId(pageId)
-                            .orElseThrow(() -> {
-                                logger.warn("syncAllPage failed - PageEntity not found: pageId={}", pageId);
-                                return new CustomException(404, "Không tìm thấy PageEntity với pageId: " + pageId);
-                            });
-                    String pageAccessToken = pageEntity.getPageAccessToken();
-                    // Đồng bộ post
-                    postService.syncPost(pageId, pageAccessToken);
-                    // Đồng bộ video
-                    videoService.syncVideo(pageId, pageAccessToken);
-                    // Nếu thành công, cập nhật về ACTIVE
-                    pageService.updatePageStatus(List.of(pageId), PageStatus.ACTIVE.getValue());
-                } catch (Exception e) {
-                    log.error("Đồng bộ thất bại cho pageId {}: {}", pageId, e.getMessage(), e);
-                    // Nếu lỗi, cập nhật về FAILED
-                    pageService.updatePageStatus(List.of(pageId), PageStatus.FAILED.getValue());
-                }
-            }
-        });
+        // 2. Lấy userId từ ThreadContext trước khi publish event
+        String userId = ThreadContext.get(Constant.USER_ID_KEY);
+        Long userAppId = Long.parseLong(userId);
+        
+        eventPublisher.publishEvent(new PageSyncEvent(this, pageIds, userId, userAppId));
 
-        // 3. Trả về kết quả ngay cho client
-        Map<String, Object> result = new HashMap<>();
-        result.put("pageIds", pageIds);
-        result.put("message", "Đã nhận yêu cầu đồng bộ. Vui lòng kiểm tra trạng thái từng page bằng API GET /user/{userId}/pages.");
-        return ResponseEntity.ok(result);
+        // 3. Trả về message đơn giản cho client
+        return ResponseEntity.ok("Success");
     }
 
     // Cho phép test trực tiếp logic đồng bộ 1 page
@@ -366,7 +369,7 @@ public class FaceController {
             // Tạo URL yêu cầu tin nhắn từ Facebook hoặc tiếp tục từ trang tiếp theo nếu có
             String messagesUrl;
             if (nextPageUrl == null) {
-                messagesUrl = UriComponentsBuilder.fromHttpUrl(CONVERSATION_URL)
+                messagesUrl = UriComponentsBuilder.fromHttpUrl(conversationUrl)
                         .queryParam("access_token", accessToken)
                         .queryParam("fields", "senders")
                         .buildAndExpand(pageId)
@@ -452,7 +455,7 @@ public class FaceController {
             try {
                 if (nextPageUrl == null) {
                     String fields = "messages{created_time,from,message,attachments{image_data,file_url,video_data},sticker,shares}";
-                    conversationUrl = "https://graph.facebook.com/" + conversationId + "?fields={fields}&access_token="
+                    conversationUrl = graphApiBaseUrl + conversationId + "?fields={fields}&access_token="
                             + accessToken;
 
                     response = restTemplate.getForEntity(conversationUrl, Map.class, fields);
@@ -554,7 +557,7 @@ public class FaceController {
     }
 
     private void requestPageSubscription(String pageId, String pageAccessToken) {
-        String subscriptionUrl = "https://graph.facebook.com/" + pageId + "/subscribed_apps";
+        String subscriptionUrl = graphApiBaseUrl + pageId + "/subscribed_apps";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 

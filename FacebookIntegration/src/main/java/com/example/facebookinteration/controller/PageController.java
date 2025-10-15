@@ -1,6 +1,7 @@
 package com.example.facebookinteration.controller;
 
 import com.example.facebookinteration.constant.enums.PageStatus;
+import com.example.facebookinteration.dto.req.PageRequest;
 import com.example.facebookinteration.dto.res.PageRes;
 import com.example.facebookinteration.service.impl.PageService;
 
@@ -32,14 +33,14 @@ public class PageController {
     } 
 
     @PostMapping("/pages/active")
-    public ResponseEntity<String> activePage(@RequestBody List<String> pageIds){
-        pageService.updatePageStatus(pageIds, PageStatus.ACTIVE.getValue());
+    public ResponseEntity<String> activePage(@RequestBody PageRequest req){
+        pageService.updatePageStatus(req.getPageIds(), PageStatus.ACTIVE.getValue());
         return ResponseEntity.ok("success");
     }
 
     @PostMapping("/pages/inactive")
-    public ResponseEntity<String> inActivePage(@RequestBody List<String> pageIds){
-        pageService.updatePageStatus(pageIds, PageStatus.INACTIVE.getValue());
+    public ResponseEntity<String> inActivePage(@RequestBody PageRequest req){
+        pageService.updatePageStatus(req.getPageIds(), PageStatus.INACTIVE.getValue());
         return ResponseEntity.ok("success");
     }
 }

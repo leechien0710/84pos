@@ -62,13 +62,13 @@ public class PostServiceSyncImpl implements PostService {
     }
 
     public void handleSyncPost(PostSync.Posts firstPagePosts, String pageId, String accessToken) {
-        long totalStart = System.currentTimeMillis();
-
+        log.info("POST_START: pageId={}", pageId);
+        
         PostSync.Posts currentPosts = firstPagePosts;
         List<CompletableFuture<Void>> commentFutures = new ArrayList<>();
+        int totalPosts = 0;
 
         while (currentPosts != null) {
-            long saveStart = System.currentTimeMillis();
             List<FbPostEntity> currentBatch = new ArrayList<>();
 
             for (PostSync.Post post : currentPosts.getData()) {
@@ -78,19 +78,31 @@ public class PostServiceSyncImpl implements PostService {
             }
 
             fbPostRepo.saveAll(currentBatch);
-            log.info("[{}] Lưu {} post vào DB mất {}ms", pageId, currentBatch.size(),
-                    System.currentTimeMillis() - saveStart);
+            totalPosts += currentBatch.size();
+            log.info("POST_SAVED: pageId={}, batch={}, total={}", pageId, currentBatch.size(), totalPosts);
 
             // Sync comment cho từng post và gom các task vào danh sách
-            for (FbPostEntity post : currentBatch) {
-                CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                    long commentStart = System.currentTimeMillis();
+            log.info("COMMENT_QUEUE: pageId={}, queuing {} posts for comment sync", pageId, currentBatch.size());
+            for (int i = 0; i < currentBatch.size(); i++) {
+                FbPostEntity post = currentBatch.get(i);
+                
+                // Thêm delay giữa các request để tránh rate limiting
+                if (i > 0) {
                     try {
+                        Thread.sleep(1000); // 1 giây delay giữa các request
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                
+                CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                    try {
+                        log.info("COMMENT_START: pageId={}, postId={}", pageId, post.getId());
                         commentService.syncComment(post.getId(), accessToken);
-                        log.info("[{}] ✅ Sync xong comment cho postId={} trong {}ms",
-                                pageId, post.getId(), System.currentTimeMillis() - commentStart);
+                        log.info("COMMENT_DONE: pageId={}, postId={}", pageId, post.getId());
                     } catch (Exception e) {
-                        log.error("❌ Lỗi sync comment cho postId={} - {}", post.getId(), e.getMessage(), e);
+                        log.error("COMMENT_ERROR: pageId={}, postId={}, error={}", 
+                                pageId, post.getId(), e.getMessage());
                     }
                 });
                 commentFutures.add(future);
@@ -103,21 +115,18 @@ public class PostServiceSyncImpl implements PostService {
             }
 
             try {
-                long apiStart = System.currentTimeMillis();
                 Object rawResponse = facebookClient.callApiByUrlSync(nextPageUrl);
                 currentPosts = DataUtils.convertToTargetType(rawResponse, PostSync.Posts.class);
-                log.info("[{}] Gọi API lấy trang kế tiếp mất {}ms", pageId, System.currentTimeMillis() - apiStart);
             } catch (Exception e) {
-                log.error("❌ Lỗi gọi API trang kế tiếp cho pageId={} - {}", pageId, e.getMessage(), e);
+                log.error("POST_API_ERROR: pageId={}, error={}", pageId, e.getMessage());
                 break;
             }
         }
 
-        // 🔚 Đợi tất cả comment sync xong rồi mới log tổng thời gian
+        // Đợi tất cả comment sync xong
         CompletableFuture.allOf(commentFutures.toArray(new CompletableFuture[0])).join();
-
-        log.info("[{}] ✅ Hoàn tất đồng bộ tất cả bài viết và comment, tổng thời gian: {}ms",
-                pageId, System.currentTimeMillis() - totalStart);
+        
+        log.info("POST_COMPLETE: pageId={}, totalPosts={}", pageId, totalPosts);
     }
 
     PostSync.Post getPost(String postId, String accessToken) {

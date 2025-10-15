@@ -2,6 +2,7 @@ package com.example.facebookinteration.service.impl;
 
 import com.example.facebookinteration.constant.Constant;
 import com.example.facebookinteration.service.FacebookClient;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -13,6 +14,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Component
+@Slf4j
 public class FacebookClientImpl implements FacebookClient {
 
     private final WebClient webClient;
@@ -53,12 +55,28 @@ public class FacebookClientImpl implements FacebookClient {
 
     @Override
     public <T> T callApiSync(String path, Map<String, String> params, String accessToken, Class<T> responseType) {
-        return callApi(path, params, accessToken, responseType).block();
+        log.info("FACEBOOK_API_CALL: path={}, token={}...", path, accessToken.substring(0, Math.min(10, accessToken.length())));
+        
+        try {
+            T result = callApi(path, params, accessToken, responseType)
+                    .timeout(java.time.Duration.ofSeconds(30))
+                    .doOnSuccess(response -> log.info("FACEBOOK_API_SUCCESS: path={}", path))
+                    .doOnError(error -> log.error("FACEBOOK_API_ERROR: path={}, error={}", path, error.getMessage()))
+                    .block();
+            
+            log.info("FACEBOOK_API_RESPONSE: path={}, response={}", path, result != null ? "OK" : "NULL");
+            return result;
+        } catch (Exception e) {
+            log.error("FACEBOOK_API_EXCEPTION: path={}, error={}", path, e.getMessage(), e);
+            throw e;
+        }
     }
 
     @Override
     public Object callApiByUrlSync(String url) {
-        return callApiByUrl(url).block();
+        return callApiByUrl(url)
+                .timeout(java.time.Duration.ofSeconds(30))
+                .block();
     }
 
 }

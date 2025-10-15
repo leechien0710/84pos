@@ -2,6 +2,7 @@ package com.example.facebookinteration.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.data.web.config.EnableSpringDataWebSupport;
 import org.springframework.data.web.config.EnableSpringDataWebSupport.PageSerializationMode;
 import org.springframework.http.HttpHeaders;
@@ -12,6 +13,9 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import com.restfb.DefaultJsonMapper;
 import com.restfb.JsonMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.databind.SerializationFeature;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -54,4 +58,5 @@ public class AppConfig {
     public JsonMapper restfbJsonMapper() {
         return new DefaultJsonMapper();
     }
+
 }

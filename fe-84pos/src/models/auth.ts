@@ -35,8 +35,8 @@ export const getFbPage = async (userId: string) => {
   return res.data;
 };
 
-export const addFbPages = async (userIds: string[]) => {
-  const res = await post("/api/face/pages/active", userIds);
+export const addFbPages = async (pageIds: string[]) => {
+  const res = await post("/api/face/pages/active", { pageIds });
   return res.data;
 };
 
@@ -45,7 +45,7 @@ export const syncAllPage = async (pageIds: string[]) => {
   return res.data;
 };
 
-export const removeFbPage = async (userIds: string[]) => {
-  const res = await post("/api/face/pages/inactive", userIds);
+export const removeFbPage = async (pageIds: string[]) => {
+  const res = await post("/api/face/pages/inactive", { pageIds });
   return res.data;
 };

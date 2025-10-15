@@ -23,50 +23,44 @@ public class RequestResponseLoggingInterceptor implements HandlerInterceptor {
         // Ghi nhận thời gian bắt đầu request
         request.setAttribute(REQUEST_START_TIME, System.currentTimeMillis());
         
-        // Xây dựng log message trên 1 dòng
-        StringBuilder logMessage = new StringBuilder();
-        
-        // PATH
-        logMessage.append("PATH: ").append(request.getMethod()).append(" ").append(request.getRequestURI());
-        if (request.getQueryString() != null) {
-            logMessage.append("?").append(request.getQueryString());
-        }
-        
-        // REQ BODY
-        logMessage.append(" | REQ BODY: ");
-        String requestBody = getRequestBodyFromInputStream(request);
-        if (requestBody != null && !requestBody.isEmpty()) {
-            request.setAttribute("REQUEST_BODY", requestBody);
-            logMessage.append(requestBody);
-        } else {
-            logMessage.append("(empty)");
-        }
-        
-        // Log tất cả trên 1 dòng
-        logger.info("=========================================");
-        logger.info("{}", logMessage.toString());
-        
+        // Không log gì cả - chỉ track thời gian
         return true;
     }
 
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
-        logger.info("=========================================");
-    }
-    
-    private String getRequestBodyFromInputStream(HttpServletRequest request) {
+        // Log response body nếu có
         try {
-            // Đọc request body từ input stream
-            StringBuilder body = new StringBuilder();
-            String line;
-            while ((line = request.getReader().readLine()) != null) {
-                body.append(line);
+            if (response instanceof org.springframework.web.util.ContentCachingResponseWrapper) {
+                org.springframework.web.util.ContentCachingResponseWrapper responseWrapper = 
+                    (org.springframework.web.util.ContentCachingResponseWrapper) response;
+                byte[] content = responseWrapper.getContentAsByteArray();
+                if (content.length > 0) {
+                    String responseBody = new String(content, response.getCharacterEncoding());
+                    logger.info("RESPONSE BODY: {}", responseBody);
+                }
             }
-            return body.toString();
         } catch (Exception e) {
-            logger.debug("Error reading request body from input stream: {}", e.getMessage());
-            return null;
+            logger.debug("Could not log response body: {}", e.getMessage());
+        }
+        
+        // Tính thời gian xử lý request
+        Long startTime = (Long) request.getAttribute(REQUEST_START_TIME);
+        if (startTime != null) {
+            long duration = System.currentTimeMillis() - startTime;
+            logger.info("============= REQUEST END ============= ({}ms)", duration);
+        } else {
+            logger.info("============= REQUEST END =============");
         }
     }
+    
+    private boolean isImportantHeader(String lowerHeaderName) {
+        return lowerHeaderName.equals("content-type") ||
+               lowerHeaderName.equals("authorization") ||
+               lowerHeaderName.equals("user-agent") ||
+               lowerHeaderName.equals("x-forwarded-for") ||
+               lowerHeaderName.equals("x-real-ip");
+    }
+    
     
 }

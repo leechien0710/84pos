@@ -28,6 +28,8 @@ public class DataUtils {
                 .registerModule(new Jdk8Module())
                 .registerModule(new JavaTimeModule());
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        // Đảm bảo LocalDateTime được serialize đúng cách
+        mapper.findAndRegisterModules();
         return mapper;
     }
 
